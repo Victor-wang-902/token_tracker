@@ -126,6 +126,18 @@ function makeDayFormatter(timezone) {
   });
 }
 
+function makeDateTimeFormatter(timezone) {
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    weekday: "short",
+    hour: "2-digit",
+    hour12: false,
+  });
+}
+
 function dayKey(timestamp, formatter) {
   const date = new Date(timestamp);
   if (Number.isNaN(date.getTime())) return null;
@@ -135,8 +147,22 @@ function dayKey(timestamp, formatter) {
   return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
+function timeParts(timestamp, formatter) {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = Object.fromEntries(
+    formatter.formatToParts(date).map((part) => [part.type, part.value]),
+  );
+  const hour = Number(parts.hour === "24" ? "0" : parts.hour);
+  return {
+    date: `${parts.year}-${parts.month}-${parts.day}`,
+    weekday: parts.weekday,
+    hour: Number.isFinite(hour) ? hour : 0,
+  };
+}
+
 function hash(value) {
-  return crypto.createHash("sha256").update(value).digest("hex").slice(0, 20);
+  return crypto.createHash("sha256").update(value).digest("hex").slice(0, 16);
 }
 
 function slug(value) {
@@ -193,6 +219,50 @@ function addDaily(daily, date, tool, usageDelta, events = 0, sessions = 0) {
   row.sessions += sessions;
 }
 
+function addHourly(hourly, timestamp, tool, usageDelta, formatter, events = 0) {
+  const parts = timeParts(timestamp, formatter);
+  if (!parts) return;
+  mergeHourly(hourly, {
+    ...parts,
+    tool,
+    ...usageDelta,
+    events,
+  });
+}
+
+function mergeHourly(hourly, source) {
+  const key = `${source.date}\t${source.hour}\t${source.tool}`;
+  if (!hourly.has(key)) {
+    hourly.set(key, {
+      date: source.date,
+      weekday: source.weekday,
+      hour: source.hour,
+      tool: source.tool,
+      ...zeroUsage(),
+      events: 0,
+    });
+  }
+  const row = hourly.get(key);
+  addUsage(row, source);
+  row.events += Number(source.events) || 0;
+}
+
+function addModel(models, tool, model, usageDelta, events = 0) {
+  const safeModel = model || "unknown";
+  const key = `${tool}\t${safeModel}`;
+  if (!models.has(key)) {
+    models.set(key, {
+      tool,
+      model: safeModel,
+      ...zeroUsage(),
+      events: 0,
+    });
+  }
+  const row = models.get(key);
+  addUsage(row, usageDelta);
+  row.events += events;
+}
+
 function sortedDailyRows(daily) {
   return Array.from(daily.values()).sort((a, b) => {
     const byDate = a.date.localeCompare(b.date);
@@ -219,6 +289,20 @@ function buildTotalFromDaily(rows) {
   return Array.from(totals.values()).sort((a, b) => a.tool.localeCompare(b.tool));
 }
 
+function sortedHourlyRows(hourly) {
+  return Array.from(hourly.values()).sort((a, b) => {
+    const byDate = a.date.localeCompare(b.date);
+    if (byDate) return byDate;
+    return a.hour - b.hour || a.tool.localeCompare(b.tool);
+  });
+}
+
+function sortedModelRows(models) {
+  return Array.from(models.values()).sort((a, b) => {
+    return b.total_tokens - a.total_tokens || a.tool.localeCompare(b.tool) || a.model.localeCompare(b.model);
+  });
+}
+
 async function readJsonlLines(file, onLine) {
   const stream = fs.createReadStream(file, { encoding: "utf8" });
   const lines = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -229,7 +313,10 @@ async function readJsonlLines(file, onLine) {
 
 async function collectCodex(root, timezone) {
   const formatter = makeDayFormatter(timezone);
+  const timeFormatter = makeDateTimeFormatter(timezone);
   const daily = new Map();
+  const hourly = new Map();
+  const modelTotals = new Map();
   const sessions = [];
   let filesScanned = 0;
 
@@ -259,7 +346,8 @@ async function collectCodex(root, timezone) {
       const model =
         entry?.payload?.info?.model ||
         entry?.payload?.info?.last_token_usage?.model ||
-        entry?.payload?.info?.total_token_usage?.model;
+        entry?.payload?.info?.total_token_usage?.model ||
+        "unknown";
       if (model) models.add(String(model));
 
       const delta = subtractUsage(total, previousTotal);
@@ -273,6 +361,8 @@ async function collectCodex(root, timezone) {
       lastActivity = timestamp;
       addUsage(sessionTotal, delta);
       addDaily(sessionDaily, date, "codex", delta, 1, 0);
+      addHourly(hourly, timestamp, "codex", delta, timeFormatter, 1);
+      addModel(modelTotals, "codex", String(model), delta, 1);
     });
 
     if ((sessionTotal.total_tokens || 0) === 0) continue;
@@ -296,18 +386,22 @@ async function collectCodex(root, timezone) {
   return {
     source: {
       tool: "codex",
-      root_hash: hash(path.resolve(root)),
       files_scanned: filesScanned,
       sessions_with_usage: sessions.length,
     },
     daily,
+    hourly,
+    models: modelTotals,
     sessions,
   };
 }
 
 async function collectClaude(root, timezone) {
   const formatter = makeDayFormatter(timezone);
+  const timeFormatter = makeDateTimeFormatter(timezone);
   const daily = new Map();
+  const hourly = new Map();
+  const modelTotals = new Map();
   const sessions = [];
   let filesScanned = 0;
 
@@ -349,6 +443,8 @@ async function collectClaude(root, timezone) {
       lastActivity = timestamp;
       addUsage(sessionTotal, usage);
       addDaily(sessionDaily, date, "claude", usage, 1, 0);
+      addHourly(hourly, timestamp, "claude", usage, timeFormatter, 1);
+      addModel(modelTotals, "claude", String(model || "unknown"), usage, 1);
     });
 
     if ((sessionTotal.total_tokens || 0) === 0) continue;
@@ -372,11 +468,12 @@ async function collectClaude(root, timezone) {
   return {
     source: {
       tool: "claude",
-      root_hash: hash(path.resolve(root)),
       files_scanned: filesScanned,
       sessions_with_usage: sessions.length,
     },
     daily,
+    hourly,
+    models: modelTotals,
     sessions,
   };
 }
@@ -391,12 +488,16 @@ async function collectCommand(options) {
 
   const sources = [];
   const allDaily = new Map();
+  const allHourly = new Map();
+  const allModels = new Map();
   const sessions = [];
 
   if (codexRoot && await exists(codexRoot)) {
     const codex = await collectCodex(codexRoot, timezone);
     sources.push(codex.source);
     for (const row of codex.daily.values()) addDaily(allDaily, row.date, row.tool, row, row.events, row.sessions);
+    for (const row of codex.hourly.values()) mergeHourly(allHourly, row);
+    for (const row of codex.models.values()) addModel(allModels, row.tool, row.model, row, row.events);
     sessions.push(...codex.sessions);
   }
 
@@ -404,19 +505,24 @@ async function collectCommand(options) {
     const claude = await collectClaude(claudeRoot, timezone);
     sources.push(claude.source);
     for (const row of claude.daily.values()) addDaily(allDaily, row.date, row.tool, row, row.events, row.sessions);
+    for (const row of claude.hourly.values()) mergeHourly(allHourly, row);
+    for (const row of claude.models.values()) addModel(allModels, row.tool, row.model, row, row.events);
     sessions.push(...claude.sessions);
   }
 
   const daily = sortedDailyRows(allDaily).map(({ devices, ...row }) => row);
+  const hourly = sortedHourlyRows(allHourly);
+  const models = sortedModelRows(allModels);
   const totals = buildTotalFromDaily(daily);
   const output = {
     schema_version: 1,
     generated_at: new Date().toISOString(),
     device,
-    device_hash: hash(device),
     timezone,
     sources,
     daily,
+    hourly,
+    models,
     totals,
     sessions: includeSessions
       ? sessions.sort((a, b) => {
