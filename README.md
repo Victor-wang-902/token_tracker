@@ -10,7 +10,7 @@ responses, tool outputs, or full session logs.
 - Codex session logs from `~/.codex/sessions/**/*.jsonl`
 - Claude Code logs from `~/.claude/projects/**/*.jsonl`
 - Daily totals by tool and device
-- Session-level hashed IDs for deduping and auditing
+- Optional session-level hashed IDs if collected with `--sessions`
 
 The numbers are token usage estimates from local tool logs. They are not API
 bills and they are not official subscription counters.
@@ -59,6 +59,7 @@ npm run doctor
 npm run collect -- --device linux-workstation
 npm run collect -- --device macbook --codex "$HOME/.codex/sessions" --no-claude
 npm run collect -- --device macbook --claude "$HOME/.claude/projects" --no-codex
+npm run collect -- --device macbook --sessions
 npm run report
 ```
 
