@@ -1,0 +1,637 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AI Usage Ledger</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f6f7f9;
+        --surface: #ffffff;
+        --surface-2: #eef2f7;
+        --border: #d8dee8;
+        --text: #17202a;
+        --muted: #5d6978;
+        --codex: #2563eb;
+        --claude: #b45309;
+        --all: #0f766e;
+        --danger: #b91c1c;
+        --shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 14px;
+        line-height: 1.45;
+      }
+
+      button,
+      select {
+        font: inherit;
+      }
+
+      .shell {
+        width: min(1180px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 24px 0 40px;
+      }
+
+      header {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 24px;
+        line-height: 1.15;
+        letter-spacing: 0;
+      }
+
+      .meta {
+        color: var(--muted);
+        font-size: 13px;
+        text-align: right;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .segmented,
+      .select-wrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 36px;
+      }
+
+      .segmented {
+        padding: 3px;
+        background: var(--surface-2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+      }
+
+      .segmented button {
+        height: 30px;
+        min-width: 74px;
+        border: 0;
+        border-radius: 6px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+      }
+
+      .segmented button[aria-pressed="true"] {
+        background: var(--surface);
+        color: var(--text);
+        box-shadow: var(--shadow);
+      }
+
+      select {
+        height: 36px;
+        min-width: 156px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--text);
+        padding: 0 32px 0 10px;
+      }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+
+      .kpi {
+        min-height: 98px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px;
+        box-shadow: var(--shadow);
+      }
+
+      .kpi-label {
+        color: var(--muted);
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+
+      .kpi-value {
+        margin-top: 8px;
+        font-size: 26px;
+        line-height: 1.1;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+
+      .kpi-detail {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 13px;
+        overflow-wrap: anywhere;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 360px;
+        gap: 16px;
+        align-items: start;
+      }
+
+      .panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+
+      .panel-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        min-height: 48px;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .panel-title {
+        font-size: 14px;
+        font-weight: 700;
+      }
+
+      .panel-subtitle {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+      }
+
+      .chart {
+        padding: 8px 14px 14px;
+      }
+
+      .bar-row {
+        display: grid;
+        grid-template-columns: 92px minmax(160px, 1fr) 96px;
+        align-items: center;
+        gap: 10px;
+        min-height: 30px;
+      }
+
+      .date-label,
+      .value-label {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      .value-label {
+        text-align: right;
+      }
+
+      .track {
+        position: relative;
+        height: 16px;
+        border-radius: 5px;
+        overflow: hidden;
+        background: var(--surface-2);
+      }
+
+      .bar {
+        position: absolute;
+        inset: 0 auto 0 0;
+        min-width: 1px;
+      }
+
+      .bar.codex {
+        background: var(--codex);
+      }
+
+      .bar.claude {
+        background: var(--claude);
+      }
+
+      .bar.all {
+        background: var(--all);
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        min-width: 760px;
+      }
+
+      th,
+      td {
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        background: #fbfcfe;
+      }
+
+      th:first-child,
+      td:first-child,
+      th:nth-child(2),
+      td:nth-child(2) {
+        text-align: left;
+      }
+
+      tbody tr:hover {
+        background: #fbfcfe;
+      }
+
+      .tool-pill {
+        display: inline-flex;
+        align-items: center;
+        min-width: 58px;
+        height: 22px;
+        padding: 0 8px;
+        border-radius: 999px;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .tool-pill.codex {
+        background: var(--codex);
+      }
+
+      .tool-pill.claude {
+        background: var(--claude);
+      }
+
+      .device-list {
+        padding: 6px 14px 14px;
+      }
+
+      .device {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .device:last-child {
+        border-bottom: 0;
+      }
+
+      .device-name {
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+
+      .device-meta,
+      .device-total {
+        color: var(--muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .device-total {
+        text-align: right;
+      }
+
+      .error {
+        border-color: #fecaca;
+        color: var(--danger);
+        background: #fff7f7;
+        padding: 14px;
+      }
+
+      @media (max-width: 900px) {
+        .kpis,
+        .grid {
+          grid-template-columns: 1fr;
+        }
+
+        header,
+        .toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .meta {
+          text-align: left;
+        }
+
+        .segmented,
+        select {
+          width: 100%;
+        }
+
+        .segmented button {
+          flex: 1;
+        }
+
+        .bar-row {
+          grid-template-columns: 78px minmax(96px, 1fr) 82px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <header>
+        <div>
+          <h1>AI Usage Ledger</h1>
+        </div>
+        <div class="meta">
+          <div id="updated">Updated</div>
+          <div id="deviceCount">Devices</div>
+        </div>
+      </header>
+
+      <section class="toolbar" aria-label="Filters">
+        <div class="segmented" id="toolFilter">
+          <button type="button" data-tool="all" aria-pressed="true">All</button>
+          <button type="button" data-tool="codex" aria-pressed="false">Codex</button>
+          <button type="button" data-tool="claude" aria-pressed="false">Claude</button>
+        </div>
+        <label class="select-wrap">
+          <select id="metricSelect" aria-label="Metric">
+            <option value="total_tokens">Total tokens</option>
+            <option value="input_tokens">Input tokens</option>
+            <option value="cache_read_input_tokens">Cache read</option>
+            <option value="cache_creation_input_tokens">Cache create</option>
+            <option value="output_tokens">Output tokens</option>
+            <option value="reasoning_output_tokens">Reasoning tokens</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="kpis" id="kpis" aria-label="Totals"></section>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Daily Usage</div>
+            <div class="panel-subtitle" id="chartSubtitle"></div>
+          </div>
+          <div class="chart" id="chart"></div>
+        </div>
+
+        <aside class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Devices</div>
+            <div class="panel-subtitle" id="deviceSubtitle"></div>
+          </div>
+          <div class="device-list" id="devices"></div>
+        </aside>
+      </section>
+
+      <section class="panel" style="margin-top:16px">
+        <div class="panel-head">
+          <div class="panel-title">Rows</div>
+          <div class="panel-subtitle" id="rowSubtitle"></div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Tool</th>
+                <th>Input</th>
+                <th>Cache Create</th>
+                <th>Cache Read</th>
+                <th>Output</th>
+                <th>Reasoning</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const fmt = new Intl.NumberFormat("en-US");
+      const compact = new Intl.NumberFormat("en-US", {
+        notation: "compact",
+        maximumFractionDigits: 1
+      });
+      const dateFmt = new Intl.DateTimeFormat("en-US", {
+        month: "short",
+        day: "numeric"
+      });
+
+      let ledger = null;
+      let activeTool = "all";
+      let activeMetric = "total_tokens";
+
+      const metricLabels = {
+        input_tokens: "Input",
+        cache_creation_input_tokens: "Cache create",
+        cache_read_input_tokens: "Cache read",
+        output_tokens: "Output",
+        reasoning_output_tokens: "Reasoning",
+        total_tokens: "Total"
+      };
+
+      function token(value) {
+        return fmt.format(Number(value) || 0);
+      }
+
+      function shortToken(value) {
+        return compact.format(Number(value) || 0);
+      }
+
+      function parseDay(day) {
+        return new Date(`${day}T12:00:00`);
+      }
+
+      function rowsForTool() {
+        if (!ledger) return [];
+        if (activeTool === "all") return ledger.daily;
+        return ledger.daily.filter((row) => row.tool === activeTool);
+      }
+
+      function sumRows(rows) {
+        const total = {
+          input_tokens: 0,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 0,
+          output_tokens: 0,
+          reasoning_output_tokens: 0,
+          total_tokens: 0,
+          events: 0,
+          sessions: 0
+        };
+        for (const row of rows) {
+          for (const key of Object.keys(total)) total[key] += Number(row[key]) || 0;
+        }
+        return total;
+      }
+
+      function byTool(tool) {
+        if (tool === "all") return ledger.combined;
+        return ledger.totals.find((row) => row.tool === tool) || {};
+      }
+
+      function renderKpis(rows) {
+        const total = sumRows(rows);
+        const codex = byTool("codex");
+        const claude = byTool("claude");
+        const devices = ledger.device_count || 0;
+        const items = [
+          ["Selected", total[activeMetric], `${metricLabels[activeMetric]} across current filter`],
+          ["Codex", codex.total_tokens || 0, `${token(codex.output_tokens)} output`],
+          ["Claude", claude.total_tokens || 0, `${token(claude.output_tokens)} output`],
+          ["Devices", devices, `${token(total.sessions)} sessions tracked`]
+        ];
+
+        document.getElementById("kpis").innerHTML = items.map(([label, value, detail]) => `
+          <article class="kpi">
+            <div class="kpi-label">${label}</div>
+            <div class="kpi-value">${label === "Devices" ? token(value) : shortToken(value)}</div>
+            <div class="kpi-detail">${detail}</div>
+          </article>
+        `).join("");
+      }
+
+      function renderChart(rows) {
+        const grouped = new Map();
+        for (const row of rows) {
+          const current = grouped.get(row.date) || { date: row.date, value: 0 };
+          current.value += Number(row[activeMetric]) || 0;
+          grouped.set(row.date, current);
+        }
+        const chartRows = Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date));
+        const max = Math.max(...chartRows.map((row) => row.value), 1);
+        const chart = document.getElementById("chart");
+        chart.innerHTML = chartRows.map((row) => {
+          const width = Math.max((row.value / max) * 100, row.value > 0 ? 1 : 0);
+          const label = dateFmt.format(parseDay(row.date));
+          return `
+            <div class="bar-row">
+              <div class="date-label">${label}</div>
+              <div class="track">
+                <div class="bar ${activeTool}" style="width:${width}%"></div>
+              </div>
+              <div class="value-label">${shortToken(row.value)}</div>
+            </div>
+          `;
+        }).join("");
+        document.getElementById("chartSubtitle").textContent = `${metricLabels[activeMetric]} by day`;
+      }
+
+      function renderDevices() {
+        const devices = document.getElementById("devices");
+        devices.innerHTML = ledger.devices.map((device) => {
+          const total = device.totals.reduce((sum, row) => sum + (Number(row.total_tokens) || 0), 0);
+          const sources = device.sources.map((source) => `${source.tool}: ${source.sessions_with_usage}`).join(" / ");
+          return `
+            <div class="device">
+              <div>
+                <div class="device-name">${device.device}</div>
+                <div class="device-meta">${sources || "No sources"}</div>
+              </div>
+              <div class="device-total">${shortToken(total)}</div>
+            </div>
+          `;
+        }).join("");
+        document.getElementById("deviceSubtitle").textContent = `${ledger.device_count} total`;
+      }
+
+      function renderTable(rows) {
+        const body = document.getElementById("rows");
+        body.innerHTML = rows.slice().reverse().map((row) => `
+          <tr>
+            <td>${row.date}</td>
+            <td><span class="tool-pill ${row.tool}">${row.tool}</span></td>
+            <td>${token(row.input_tokens)}</td>
+            <td>${token(row.cache_creation_input_tokens)}</td>
+            <td>${token(row.cache_read_input_tokens)}</td>
+            <td>${token(row.output_tokens)}</td>
+            <td>${token(row.reasoning_output_tokens)}</td>
+            <td>${token(row.total_tokens)}</td>
+          </tr>
+        `).join("");
+        document.getElementById("rowSubtitle").textContent = `${rows.length} rows`;
+      }
+
+      function render() {
+        const rows = rowsForTool();
+        renderKpis(rows);
+        renderChart(rows);
+        renderDevices();
+        renderTable(rows);
+
+        const generated = ledger.generated_at ? new Date(ledger.generated_at) : null;
+        document.getElementById("updated").textContent = generated
+          ? `Updated ${generated.toLocaleString()}`
+          : "Updated unknown";
+        document.getElementById("deviceCount").textContent = `${ledger.device_count || 0} devices`;
+      }
+
+      document.getElementById("toolFilter").addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-tool]");
+        if (!button) return;
+        activeTool = button.dataset.tool;
+        for (const item of document.querySelectorAll("#toolFilter button")) {
+          item.setAttribute("aria-pressed", String(item === button));
+        }
+        render();
+      });
+
+      document.getElementById("metricSelect").addEventListener("change", (event) => {
+        activeMetric = event.target.value;
+        render();
+      });
+
+      fetch("./data/ledger.json")
+        .then((response) => {
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          return response.json();
+        })
+        .then((data) => {
+          ledger = data;
+          render();
+        })
+        .catch((error) => {
+          document.querySelector(".shell").innerHTML = `
+            <div class="panel error">
+              Dashboard data could not be loaded: ${error.message}
+            </div>
+          `;
+        });
+    </script>
+  </body>
+</html>
