@@ -3,21 +3,27 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AI Usage Ledger</title>
+    <title>AI Usage Monitor</title>
     <style>
       :root {
-        color-scheme: light;
-        --bg: #f6f7f9;
-        --surface: #ffffff;
-        --surface-2: #eef2f7;
-        --border: #d8dee8;
-        --text: #17202a;
-        --muted: #5d6978;
-        --codex: #2563eb;
-        --claude: #b45309;
-        --all: #0f766e;
-        --danger: #b91c1c;
-        --shadow: 0 1px 2px rgba(16, 24, 40, 0.08);
+        color-scheme: dark;
+        --bg: #0f1012;
+        --panel: #17191d;
+        --panel-2: #1f2228;
+        --panel-3: #262a31;
+        --border: #343943;
+        --text: #f4f7fb;
+        --muted: #a4adba;
+        --soft: #737d8d;
+        --codex: #4f8cff;
+        --claude: #f59e42;
+        --cache: #2dd4bf;
+        --output: #f472b6;
+        --reasoning: #a78bfa;
+        --good: #22c55e;
+        --warn: #fbbf24;
+        --danger: #fb7185;
+        --shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
       }
 
       * {
@@ -30,7 +36,7 @@
         color: var(--text);
         font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         font-size: 14px;
-        line-height: 1.45;
+        line-height: 1.4;
       }
 
       button,
@@ -39,30 +45,41 @@
       }
 
       .shell {
-        width: min(1180px, calc(100% - 32px));
+        width: min(1440px, calc(100% - 28px));
         margin: 0 auto;
-        padding: 24px 0 40px;
+        padding: 20px 0 38px;
       }
 
       header {
         display: flex;
         align-items: flex-end;
         justify-content: space-between;
-        gap: 16px;
-        margin-bottom: 18px;
+        gap: 18px;
+        margin-bottom: 16px;
       }
 
       h1 {
         margin: 0;
-        font-size: 24px;
-        line-height: 1.15;
+        font-size: 26px;
+        line-height: 1.05;
         letter-spacing: 0;
       }
 
-      .meta {
+      .subtitle,
+      .meta,
+      .muted {
         color: var(--muted);
+      }
+
+      .subtitle {
+        margin-top: 6px;
         font-size: 13px;
+      }
+
+      .meta {
         text-align: right;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
       }
 
       .toolbar {
@@ -70,27 +87,30 @@
         align-items: center;
         justify-content: space-between;
         gap: 12px;
-        margin-bottom: 16px;
+        margin-bottom: 14px;
       }
 
-      .segmented,
-      .select-wrap {
-        display: inline-flex;
+      .filters {
+        display: flex;
         align-items: center;
-        gap: 6px;
-        min-height: 36px;
+        gap: 10px;
+        flex-wrap: wrap;
       }
 
       .segmented {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+        min-height: 36px;
         padding: 3px;
-        background: var(--surface-2);
         border: 1px solid var(--border);
         border-radius: 8px;
+        background: var(--panel-2);
       }
 
       .segmented button {
         height: 30px;
-        min-width: 74px;
+        min-width: 62px;
         border: 0;
         border-radius: 6px;
         background: transparent;
@@ -99,79 +119,87 @@
       }
 
       .segmented button[aria-pressed="true"] {
-        background: var(--surface);
         color: var(--text);
-        box-shadow: var(--shadow);
+        background: var(--panel-3);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
       }
 
       select {
         height: 36px;
-        min-width: 156px;
+        min-width: 172px;
+        color: var(--text);
+        background: var(--panel-2);
         border: 1px solid var(--border);
         border-radius: 8px;
-        background: var(--surface);
-        color: var(--text);
-        padding: 0 32px 0 10px;
+        padding: 0 10px;
       }
 
       .kpis {
         display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-        margin-bottom: 16px;
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 14px;
+      }
+
+      .kpi,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        box-shadow: var(--shadow);
       }
 
       .kpi {
-        min-height: 98px;
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        padding: 14px;
-        box-shadow: var(--shadow);
+        min-height: 104px;
+        padding: 12px;
+        overflow: hidden;
       }
 
       .kpi-label {
         color: var(--muted);
-        font-size: 12px;
+        font-size: 11px;
+        line-height: 1.2;
         text-transform: uppercase;
         letter-spacing: 0.06em;
       }
 
       .kpi-value {
-        margin-top: 8px;
-        font-size: 26px;
-        line-height: 1.1;
-        font-weight: 700;
+        margin-top: 9px;
+        font-size: 24px;
+        line-height: 1.05;
+        font-weight: 800;
         letter-spacing: 0;
+        overflow-wrap: anywhere;
       }
 
       .kpi-detail {
         margin-top: 8px;
-        color: var(--muted);
-        font-size: 13px;
+        color: var(--soft);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
         overflow-wrap: anywhere;
       }
 
-      .grid {
+      .dashboard-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 360px;
-        gap: 16px;
+        grid-template-columns: 1.35fr 0.85fr 0.9fr;
+        gap: 14px;
         align-items: start;
       }
 
       .panel {
-        background: var(--surface);
-        border: 1px solid var(--border);
-        border-radius: 8px;
-        box-shadow: var(--shadow);
         overflow: hidden;
+      }
+
+      .panel.span-2 {
+        grid-column: span 2;
       }
 
       .panel-head {
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        gap: 10px;
+        justify-content: space-between;
+        gap: 12px;
         min-height: 48px;
         padding: 12px 14px;
         border-bottom: 1px solid var(--border);
@@ -179,30 +207,39 @@
 
       .panel-title {
         font-size: 14px;
-        font-weight: 700;
+        font-weight: 800;
+        letter-spacing: 0;
       }
 
       .panel-subtitle {
-        color: var(--muted);
+        color: var(--soft);
         font-size: 12px;
         text-align: right;
+        font-variant-numeric: tabular-nums;
       }
 
-      .chart {
-        padding: 8px 14px 14px;
+      .panel-body {
+        padding: 14px;
       }
 
-      .bar-row {
+      .timeline {
         display: grid;
-        grid-template-columns: 92px minmax(160px, 1fr) 96px;
-        align-items: center;
+        gap: 8px;
+      }
+
+      .timeline-row {
+        display: grid;
+        grid-template-columns: 82px minmax(160px, 1fr) 92px;
         gap: 10px;
-        min-height: 30px;
+        align-items: center;
+        min-height: 24px;
       }
 
       .date-label,
-      .value-label {
+      .value-label,
+      .bar-label {
         color: var(--muted);
+        font-size: 12px;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
       }
@@ -214,27 +251,179 @@
       .track {
         position: relative;
         height: 16px;
-        border-radius: 5px;
         overflow: hidden;
-        background: var(--surface-2);
+        border-radius: 4px;
+        background: var(--panel-2);
       }
 
-      .bar {
+      .segment {
         position: absolute;
-        inset: 0 auto 0 0;
-        min-width: 1px;
+        top: 0;
+        bottom: 0;
       }
 
-      .bar.codex {
+      .segment.codex,
+      .dot.codex {
         background: var(--codex);
       }
 
-      .bar.claude {
+      .segment.claude,
+      .dot.claude {
         background: var(--claude);
       }
 
-      .bar.all {
-        background: var(--all);
+      .legend {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        color: var(--muted);
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 999px;
+      }
+
+      .donut-wrap {
+        display: grid;
+        grid-template-columns: 148px minmax(0, 1fr);
+        gap: 14px;
+        align-items: center;
+      }
+
+      .donut {
+        width: 148px;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: conic-gradient(var(--codex) 0deg, var(--codex) var(--codexDeg), var(--claude) var(--codexDeg), var(--claude) 360deg);
+        display: grid;
+        place-items: center;
+      }
+
+      .donut::after {
+        content: "";
+        width: 92px;
+        aspect-ratio: 1;
+        border-radius: 50%;
+        background: var(--panel);
+        border: 1px solid var(--border);
+      }
+
+      .split-list,
+      .metric-mix,
+      .model-list,
+      .top-list,
+      .device-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .split-row,
+      .metric-row,
+      .model-row,
+      .top-row,
+      .device-row {
+        display: grid;
+        gap: 8px;
+      }
+
+      .split-row,
+      .device-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+      }
+
+      .row-title {
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+
+      .row-value {
+        color: var(--muted);
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .mini-track {
+        height: 8px;
+        border-radius: 4px;
+        overflow: hidden;
+        background: var(--panel-2);
+      }
+
+      .mini-fill {
+        height: 100%;
+        min-width: 1px;
+        border-radius: 4px;
+      }
+
+      .mini-fill.input {
+        background: var(--codex);
+      }
+
+      .mini-fill.cache {
+        background: var(--cache);
+      }
+
+      .mini-fill.output {
+        background: var(--output);
+      }
+
+      .mini-fill.reasoning {
+        background: var(--reasoning);
+      }
+
+      .mini-fill.claude {
+        background: var(--claude);
+      }
+
+      .mini-fill.codex {
+        background: var(--codex);
+      }
+
+      .heatmap {
+        display: grid;
+        gap: 7px;
+      }
+
+      .heat-row {
+        display: grid;
+        grid-template-columns: 34px repeat(24, minmax(7px, 1fr));
+        gap: 3px;
+        align-items: center;
+      }
+
+      .heat-label {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .heat-cell {
+        aspect-ratio: 1;
+        min-height: 9px;
+        border-radius: 3px;
+        background: var(--panel-2);
+        border: 1px solid rgba(255, 255, 255, 0.03);
+      }
+
+      .hour-axis {
+        display: grid;
+        grid-template-columns: 34px repeat(6, 1fr);
+        gap: 3px;
+        margin-top: 8px;
+        color: var(--soft);
+        font-size: 10px;
+        font-variant-numeric: tabular-nums;
       }
 
       .table-wrap {
@@ -243,8 +432,8 @@
 
       table {
         width: 100%;
+        min-width: 960px;
         border-collapse: collapse;
-        min-width: 760px;
       }
 
       th,
@@ -258,11 +447,10 @@
 
       th {
         color: var(--muted);
-        font-size: 12px;
-        font-weight: 700;
+        background: var(--panel-2);
+        font-size: 11px;
         text-transform: uppercase;
-        letter-spacing: 0.04em;
-        background: #fbfcfe;
+        letter-spacing: 0.06em;
       }
 
       th:first-child,
@@ -273,82 +461,70 @@
       }
 
       tbody tr:hover {
-        background: #fbfcfe;
+        background: rgba(255, 255, 255, 0.035);
       }
 
-      .tool-pill {
+      .pill {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         min-width: 58px;
         height: 22px;
         padding: 0 8px;
         border-radius: 999px;
         color: #ffffff;
         font-size: 12px;
-        font-weight: 700;
+        font-weight: 800;
       }
 
-      .tool-pill.codex {
+      .pill.codex {
         background: var(--codex);
       }
 
-      .tool-pill.claude {
+      .pill.claude {
         background: var(--claude);
       }
 
-      .device-list {
-        padding: 6px 14px 14px;
-      }
-
-      .device {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) auto;
-        gap: 10px;
-        padding: 10px 0;
-        border-bottom: 1px solid var(--border);
-      }
-
-      .device:last-child {
-        border-bottom: 0;
-      }
-
-      .device-name {
-        font-weight: 700;
-        overflow-wrap: anywhere;
-      }
-
-      .device-meta,
-      .device-total {
-        color: var(--muted);
-        font-size: 12px;
-        font-variant-numeric: tabular-nums;
-      }
-
-      .device-total {
-        text-align: right;
-      }
-
       .error {
-        border-color: #fecaca;
         color: var(--danger);
-        background: #fff7f7;
-        padding: 14px;
+        border-color: rgba(251, 113, 133, 0.45);
       }
 
-      @media (max-width: 900px) {
-        .kpis,
-        .grid {
-          grid-template-columns: 1fr;
+      @media (max-width: 1180px) {
+        .kpis {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .dashboard-grid {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .panel.span-2 {
+          grid-column: span 2;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .shell {
+          width: min(100% - 20px, 720px);
         }
 
         header,
-        .toolbar {
+        .toolbar,
+        .filters {
           align-items: stretch;
           flex-direction: column;
         }
 
         .meta {
           text-align: left;
+        }
+
+        .kpis,
+        .dashboard-grid,
+        .panel.span-2 {
+          display: grid;
+          grid-template-columns: 1fr;
         }
 
         .segmented,
@@ -360,8 +536,17 @@
           flex: 1;
         }
 
-        .bar-row {
-          grid-template-columns: 78px minmax(96px, 1fr) 82px;
+        .timeline-row {
+          grid-template-columns: 72px minmax(90px, 1fr) 76px;
+        }
+
+        .donut-wrap {
+          grid-template-columns: 1fr;
+        }
+
+        .heat-row {
+          grid-template-columns: 30px repeat(24, minmax(5px, 1fr));
+          gap: 2px;
         }
       }
     </style>
@@ -370,7 +555,8 @@
     <main class="shell">
       <header>
         <div>
-          <h1>AI Usage Ledger</h1>
+          <h1>AI Usage Monitor</h1>
+          <div class="subtitle" id="rangeText">Loading usage stats</div>
         </div>
         <div class="meta">
           <div id="updated">Updated</div>
@@ -378,109 +564,257 @@
         </div>
       </header>
 
-      <section class="toolbar" aria-label="Filters">
-        <div class="segmented" id="toolFilter">
-          <button type="button" data-tool="all" aria-pressed="true">All</button>
-          <button type="button" data-tool="codex" aria-pressed="false">Codex</button>
-          <button type="button" data-tool="claude" aria-pressed="false">Claude</button>
+      <section class="toolbar" aria-label="Dashboard filters">
+        <div class="filters">
+          <div class="segmented" id="toolFilter">
+            <button type="button" data-tool="all" aria-pressed="true">All</button>
+            <button type="button" data-tool="codex" aria-pressed="false">Codex</button>
+            <button type="button" data-tool="claude" aria-pressed="false">Claude</button>
+          </div>
+          <div class="segmented" id="rangeFilter">
+            <button type="button" data-range="all" aria-pressed="true">All</button>
+            <button type="button" data-range="30" aria-pressed="false">30d</button>
+            <button type="button" data-range="14" aria-pressed="false">14d</button>
+            <button type="button" data-range="7" aria-pressed="false">7d</button>
+          </div>
         </div>
-        <label class="select-wrap">
-          <select id="metricSelect" aria-label="Metric">
-            <option value="total_tokens">Total tokens</option>
-            <option value="input_tokens">Input tokens</option>
-            <option value="cache_read_input_tokens">Cache read</option>
-            <option value="cache_creation_input_tokens">Cache create</option>
-            <option value="output_tokens">Output tokens</option>
-            <option value="reasoning_output_tokens">Reasoning tokens</option>
-          </select>
-        </label>
+        <select id="metricSelect" aria-label="Metric">
+          <option value="total_tokens">Total tokens</option>
+          <option value="input_tokens">Input tokens</option>
+          <option value="cache_read_input_tokens">Cache read</option>
+          <option value="cache_creation_input_tokens">Cache create</option>
+          <option value="output_tokens">Output tokens</option>
+          <option value="reasoning_output_tokens">Reasoning tokens</option>
+          <option value="events">Events</option>
+        </select>
       </section>
 
-      <section class="kpis" id="kpis" aria-label="Totals"></section>
+      <section class="kpis" id="kpis" aria-label="Top-level stats"></section>
 
-      <section class="grid">
-        <div class="panel">
+      <section class="dashboard-grid">
+        <section class="panel span-2">
           <div class="panel-head">
-            <div class="panel-title">Daily Usage</div>
-            <div class="panel-subtitle" id="chartSubtitle"></div>
+            <div class="panel-title">Activity Timeline</div>
+            <div class="panel-subtitle" id="timelineSubtitle"></div>
           </div>
-          <div class="chart" id="chart"></div>
-        </div>
+          <div class="panel-body">
+            <div class="timeline" id="timeline"></div>
+          </div>
+        </section>
 
-        <aside class="panel">
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Tool Split</div>
+            <div class="panel-subtitle" id="splitSubtitle"></div>
+          </div>
+          <div class="panel-body">
+            <div class="donut-wrap">
+              <div class="donut" id="donut" style="--codexDeg: 0deg"></div>
+              <div class="split-list" id="splitList"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Metric Mix</div>
+            <div class="panel-subtitle" id="mixSubtitle"></div>
+          </div>
+          <div class="panel-body">
+            <div class="metric-mix" id="metricMix"></div>
+          </div>
+        </section>
+
+        <section class="panel span-2">
+          <div class="panel-head">
+            <div class="panel-title">Hour Heatmap</div>
+            <div class="panel-subtitle" id="heatSubtitle"></div>
+          </div>
+          <div class="panel-body">
+            <div class="heatmap" id="heatmap"></div>
+            <div class="hour-axis">
+              <span></span><span>00</span><span>04</span><span>08</span><span>12</span><span>16</span><span>20</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Model Usage</div>
+            <div class="panel-subtitle" id="modelSubtitle"></div>
+          </div>
+          <div class="panel-body">
+            <div class="model-list" id="models"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Top Days</div>
+            <div class="panel-subtitle" id="topSubtitle"></div>
+          </div>
+          <div class="panel-body">
+            <div class="top-list" id="topDays"></div>
+          </div>
+        </section>
+
+        <section class="panel">
           <div class="panel-head">
             <div class="panel-title">Devices</div>
             <div class="panel-subtitle" id="deviceSubtitle"></div>
           </div>
-          <div class="device-list" id="devices"></div>
-        </aside>
-      </section>
+          <div class="panel-body">
+            <div class="device-list" id="devices"></div>
+          </div>
+        </section>
 
-      <section class="panel" style="margin-top:16px">
-        <div class="panel-head">
-          <div class="panel-title">Rows</div>
-          <div class="panel-subtitle" id="rowSubtitle"></div>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Tool</th>
-                <th>Input</th>
-                <th>Cache Create</th>
-                <th>Cache Read</th>
-                <th>Output</th>
-                <th>Reasoning</th>
-                <th>Total</th>
-              </tr>
-            </thead>
-            <tbody id="rows"></tbody>
-          </table>
-        </div>
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Efficiency</div>
+            <div class="panel-subtitle" id="efficiencySubtitle"></div>
+          </div>
+          <div class="panel-body">
+            <div class="metric-mix" id="efficiency"></div>
+          </div>
+        </section>
+
+        <section class="panel span-2">
+          <div class="panel-head">
+            <div class="panel-title">Daily Detail</div>
+            <div class="panel-subtitle" id="rowSubtitle"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Tool</th>
+                  <th>Input</th>
+                  <th>Cache Create</th>
+                  <th>Cache Read</th>
+                  <th>Output</th>
+                  <th>Reasoning</th>
+                  <th>Events</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="rows"></tbody>
+            </table>
+          </div>
+        </section>
       </section>
     </main>
 
     <script>
       const fmt = new Intl.NumberFormat("en-US");
-      const compact = new Intl.NumberFormat("en-US", {
-        notation: "compact",
-        maximumFractionDigits: 1
-      });
-      const dateFmt = new Intl.DateTimeFormat("en-US", {
-        month: "short",
-        day: "numeric"
-      });
+      const compact = new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 });
+      const percentFmt = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 });
+      const dayFmt = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
-      let ledger = null;
-      let activeTool = "all";
-      let activeMetric = "total_tokens";
-
-      const metricLabels = {
+      const metrics = {
         input_tokens: "Input",
         cache_creation_input_tokens: "Cache create",
         cache_read_input_tokens: "Cache read",
         output_tokens: "Output",
         reasoning_output_tokens: "Reasoning",
-        total_tokens: "Total"
+        total_tokens: "Total",
+        events: "Events"
       };
+      const metricClass = {
+        input_tokens: "input",
+        cache_creation_input_tokens: "cache",
+        cache_read_input_tokens: "cache",
+        output_tokens: "output",
+        reasoning_output_tokens: "reasoning",
+        total_tokens: "input",
+        events: "output"
+      };
+      const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-      function token(value) {
-        return fmt.format(Number(value) || 0);
+      let ledger = null;
+      let activeTool = "all";
+      let activeRange = "all";
+      let activeMetric = "total_tokens";
+
+      function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+          "&": "&amp;",
+          "<": "&lt;",
+          ">": "&gt;",
+          "\"": "&quot;",
+          "'": "&#39;"
+        }[char]));
       }
 
-      function shortToken(value) {
-        return compact.format(Number(value) || 0);
+      function num(value) {
+        return Number(value) || 0;
       }
 
-      function parseDay(day) {
-        return new Date(`${day}T12:00:00`);
+      function full(value) {
+        return fmt.format(num(value));
       }
 
-      function rowsForTool() {
-        if (!ledger) return [];
-        if (activeTool === "all") return ledger.daily;
-        return ledger.daily.filter((row) => row.tool === activeTool);
+      function short(value) {
+        return compact.format(num(value));
+      }
+
+      function pct(value, total) {
+        return percentFmt.format(total > 0 ? value / total : 0);
+      }
+
+      function parseDate(key) {
+        return new Date(`${key}T12:00:00`);
+      }
+
+      function dateKey(date) {
+        return date.toISOString().slice(0, 10);
+      }
+
+      function addDays(date, days) {
+        const next = new Date(date);
+        next.setDate(next.getDate() + days);
+        return next;
+      }
+
+      function dataBounds() {
+        const dates = ledger.daily.map((row) => row.date).sort();
+        return {
+          first: dates[0],
+          last: dates[dates.length - 1]
+        };
+      }
+
+      function activeBounds() {
+        const bounds = dataBounds();
+        if (!bounds.first || !bounds.last) return bounds;
+        if (activeRange === "all") return bounds;
+        const end = parseDate(bounds.last);
+        const start = addDays(end, -Number(activeRange) + 1);
+        return {
+          first: dateKey(start),
+          last: bounds.last
+        };
+      }
+
+      function inActiveRange(row) {
+        const bounds = activeBounds();
+        return (!bounds.first || row.date >= bounds.first) && (!bounds.last || row.date <= bounds.last);
+      }
+
+      function inTool(row) {
+        return activeTool === "all" || row.tool === activeTool;
+      }
+
+      function filteredDaily() {
+        return ledger.daily.filter((row) => inActiveRange(row) && inTool(row));
+      }
+
+      function filteredHourly() {
+        return (ledger.hourly || []).filter((row) => inActiveRange(row) && inTool(row));
+      }
+
+      function filteredModels() {
+        return (ledger.models || []).filter((row) => inTool(row));
       }
 
       function sumRows(rows) {
@@ -492,125 +826,279 @@
           reasoning_output_tokens: 0,
           total_tokens: 0,
           events: 0,
-          sessions: 0
+          sessions: 0,
+          devices: 0
         };
         for (const row of rows) {
-          for (const key of Object.keys(total)) total[key] += Number(row[key]) || 0;
+          for (const key of Object.keys(total)) total[key] += num(row[key]);
         }
         return total;
       }
 
-      function byTool(tool) {
-        if (tool === "all") return ledger.combined;
-        return ledger.totals.find((row) => row.tool === tool) || {};
+      function groupDailyByDate(rows) {
+        const grouped = new Map();
+        for (const row of rows) {
+          if (!grouped.has(row.date)) grouped.set(row.date, { date: row.date, codex: 0, claude: 0, all: 0 });
+          const target = grouped.get(row.date);
+          const value = num(row[activeMetric]);
+          target[row.tool] += value;
+          target.all += value;
+        }
+        return grouped;
+      }
+
+      function dateSpan() {
+        const bounds = activeBounds();
+        if (!bounds.first || !bounds.last) return [];
+        const out = [];
+        for (let cursor = parseDate(bounds.first), end = parseDate(bounds.last); cursor <= end; cursor = addDays(cursor, 1)) {
+          out.push(dateKey(cursor));
+        }
+        return out;
       }
 
       function renderKpis(rows) {
         const total = sumRows(rows);
-        const codex = byTool("codex");
-        const claude = byTool("claude");
-        const devices = ledger.device_count || 0;
+        const byDate = Array.from(groupDailyByDate(rows).values()).sort((a, b) => b.all - a.all);
+        const peak = byDate[0] || { date: "-", all: 0 };
+        const activeDays = byDate.filter((row) => row.all > 0).length;
+        const cacheAll = total.cache_creation_input_tokens + total.cache_read_input_tokens;
+        const cacheShare = total.total_tokens > 0 ? cacheAll / total.total_tokens : 0;
+        const outputShare = total.total_tokens > 0 ? total.output_tokens / total.total_tokens : 0;
+        const selected = total[activeMetric];
         const items = [
-          ["Selected", total[activeMetric], `${metricLabels[activeMetric]} across current filter`],
-          ["Codex", codex.total_tokens || 0, `${token(codex.output_tokens)} output`],
-          ["Claude", claude.total_tokens || 0, `${token(claude.output_tokens)} output`],
-          ["Devices", devices, `${token(total.sessions)} sessions tracked`]
+          ["Selected", short(selected), `${metrics[activeMetric]} in filter`],
+          ["Total", short(total.total_tokens), `${full(total.total_tokens)} tokens`],
+          ["Output", short(total.output_tokens), pct(outputShare, 1)],
+          ["Cache", short(cacheAll), pct(cacheShare, 1)],
+          ["Reasoning", short(total.reasoning_output_tokens), `${full(total.reasoning_output_tokens)} tokens`],
+          ["Sessions", full(total.sessions), `${full(total.events)} events`],
+          ["Peak Day", short(peak.all), peak.date],
+          ["Active Days", full(activeDays), `${dateSpan().length} calendar days`]
         ];
-
         document.getElementById("kpis").innerHTML = items.map(([label, value, detail]) => `
           <article class="kpi">
-            <div class="kpi-label">${label}</div>
-            <div class="kpi-value">${label === "Devices" ? token(value) : shortToken(value)}</div>
-            <div class="kpi-detail">${detail}</div>
+            <div class="kpi-label">${escapeHtml(label)}</div>
+            <div class="kpi-value">${escapeHtml(value)}</div>
+            <div class="kpi-detail">${escapeHtml(detail)}</div>
           </article>
         `).join("");
       }
 
-      function renderChart(rows) {
-        const grouped = new Map();
-        for (const row of rows) {
-          const current = grouped.get(row.date) || { date: row.date, value: 0 };
-          current.value += Number(row[activeMetric]) || 0;
-          grouped.set(row.date, current);
-        }
-        const chartRows = Array.from(grouped.values()).sort((a, b) => a.date.localeCompare(b.date));
-        const max = Math.max(...chartRows.map((row) => row.value), 1);
-        const chart = document.getElementById("chart");
-        chart.innerHTML = chartRows.map((row) => {
-          const width = Math.max((row.value / max) * 100, row.value > 0 ? 1 : 0);
-          const label = dateFmt.format(parseDay(row.date));
+      function renderTimeline(rows) {
+        const grouped = groupDailyByDate(rows);
+        const dates = dateSpan();
+        const values = dates.map((date) => grouped.get(date) || { date, codex: 0, claude: 0, all: 0 });
+        const max = Math.max(...values.map((row) => row.all), 1);
+        document.getElementById("timeline").innerHTML = values.map((row) => {
+          const codexWidth = row.all > 0 ? (row.codex / max) * 100 : 0;
+          const claudeWidth = row.all > 0 ? (row.claude / max) * 100 : 0;
+          const codexLeft = 0;
+          const claudeLeft = codexWidth;
           return `
-            <div class="bar-row">
-              <div class="date-label">${label}</div>
-              <div class="track">
-                <div class="bar ${activeTool}" style="width:${width}%"></div>
+            <div class="timeline-row">
+              <div class="date-label">${dayFmt.format(parseDate(row.date))}</div>
+              <div class="track" title="${escapeHtml(row.date)} ${full(row.all)}">
+                <div class="segment codex" style="left:${codexLeft}%;width:${codexWidth}%"></div>
+                <div class="segment claude" style="left:${claudeLeft}%;width:${claudeWidth}%"></div>
               </div>
-              <div class="value-label">${shortToken(row.value)}</div>
+              <div class="value-label">${short(row.all)}</div>
             </div>
           `;
         }).join("");
-        document.getElementById("chartSubtitle").textContent = `${metricLabels[activeMetric]} by day`;
+        document.getElementById("timelineSubtitle").innerHTML = `
+          <span class="legend">
+            <span class="legend-item"><span class="dot codex"></span>Codex</span>
+            <span class="legend-item"><span class="dot claude"></span>Claude</span>
+          </span>
+        `;
+      }
+
+      function renderSplit(rows) {
+        const toolRows = { codex: 0, claude: 0 };
+        for (const row of rows) toolRows[row.tool] += num(row[activeMetric]);
+        const total = toolRows.codex + toolRows.claude;
+        const codexDeg = total > 0 ? (toolRows.codex / total) * 360 : 0;
+        document.getElementById("donut").style.setProperty("--codexDeg", `${codexDeg}deg`);
+        document.getElementById("splitList").innerHTML = ["codex", "claude"].map((tool) => `
+          <div class="split-row">
+            <div>
+              <div class="row-title">${tool}</div>
+              <div class="muted">${pct(toolRows[tool], total)}</div>
+            </div>
+            <div class="row-value">${short(toolRows[tool])}</div>
+          </div>
+        `).join("");
+        document.getElementById("splitSubtitle").textContent = metrics[activeMetric];
+      }
+
+      function renderMetricMix(rows) {
+        const total = sumRows(rows);
+        const items = [
+          ["Input", total.input_tokens, "input"],
+          ["Cache create", total.cache_creation_input_tokens, "cache"],
+          ["Cache read", total.cache_read_input_tokens, "cache"],
+          ["Output", total.output_tokens, "output"],
+          ["Reasoning", total.reasoning_output_tokens, "reasoning"]
+        ];
+        const max = Math.max(...items.map((item) => item[1]), 1);
+        document.getElementById("metricMix").innerHTML = items.map(([label, value, cls]) => `
+          <div class="metric-row">
+            <div class="split-row">
+              <div class="row-title">${escapeHtml(label)}</div>
+              <div class="row-value">${short(value)}</div>
+            </div>
+            <div class="mini-track"><div class="mini-fill ${cls}" style="width:${Math.max(value / max * 100, value > 0 ? 1 : 0)}%"></div></div>
+          </div>
+        `).join("");
+        document.getElementById("mixSubtitle").textContent = `${short(total.total_tokens)} total`;
+      }
+
+      function renderHeatmap(rows) {
+        const grouped = new Map();
+        for (const row of rows) {
+          const key = `${row.weekday}\t${row.hour}`;
+          grouped.set(key, (grouped.get(key) || 0) + num(row[activeMetric]));
+        }
+        const max = Math.max(...Array.from(grouped.values()), 1);
+        document.getElementById("heatmap").innerHTML = weekdays.map((day) => {
+          const cells = Array.from({ length: 24 }, (_, hour) => {
+            const value = grouped.get(`${day}\t${hour}`) || 0;
+            const alpha = value > 0 ? 0.16 + (value / max) * 0.84 : 0;
+            return `<div class="heat-cell" title="${day} ${String(hour).padStart(2, "0")}:00 ${full(value)}" style="background:rgba(45,212,191,${alpha})"></div>`;
+          }).join("");
+          return `<div class="heat-row"><div class="heat-label">${day}</div>${cells}</div>`;
+        }).join("");
+        document.getElementById("heatSubtitle").textContent = `${metrics[activeMetric]} by hour`;
+      }
+
+      function renderModels() {
+        const rows = filteredModels().slice();
+        const max = Math.max(...rows.map((row) => num(row.total_tokens)), 1);
+        document.getElementById("models").innerHTML = rows.slice(0, 8).map((row) => `
+          <div class="model-row">
+            <div class="split-row">
+              <div class="row-title">${escapeHtml(row.model)}</div>
+              <div class="row-value">${short(row.total_tokens)}</div>
+            </div>
+            <div class="mini-track"><div class="mini-fill ${row.tool}" style="width:${Math.max(num(row.total_tokens) / max * 100, 1)}%"></div></div>
+          </div>
+        `).join("") || `<div class="muted">No model totals</div>`;
+        document.getElementById("modelSubtitle").textContent = `${rows.length} models`;
+      }
+
+      function renderTopDays(rows) {
+        const top = Array.from(groupDailyByDate(rows).values())
+          .filter((row) => row.all > 0)
+          .sort((a, b) => b.all - a.all)
+          .slice(0, 8);
+        const max = Math.max(...top.map((row) => row.all), 1);
+        document.getElementById("topDays").innerHTML = top.map((row) => `
+          <div class="top-row">
+            <div class="split-row">
+              <div class="row-title">${row.date}</div>
+              <div class="row-value">${short(row.all)}</div>
+            </div>
+            <div class="mini-track"><div class="mini-fill ${metricClass[activeMetric] || "input"}" style="width:${Math.max(row.all / max * 100, 1)}%"></div></div>
+          </div>
+        `).join("") || `<div class="muted">No active days</div>`;
+        document.getElementById("topSubtitle").textContent = metrics[activeMetric];
       }
 
       function renderDevices() {
-        const devices = document.getElementById("devices");
-        devices.innerHTML = ledger.devices.map((device) => {
-          const total = device.totals.reduce((sum, row) => sum + (Number(row.total_tokens) || 0), 0);
+        const devices = ledger.devices || [];
+        const max = Math.max(...devices.map((device) => device.totals.reduce((sum, row) => sum + num(row.total_tokens), 0)), 1);
+        document.getElementById("devices").innerHTML = devices.map((device) => {
+          const total = device.totals.reduce((sum, row) => sum + num(row.total_tokens), 0);
           const sources = device.sources.map((source) => `${source.tool}: ${source.sessions_with_usage}`).join(" / ");
           return `
-            <div class="device">
+            <div class="device-row">
               <div>
-                <div class="device-name">${device.device}</div>
-                <div class="device-meta">${sources || "No sources"}</div>
+                <div class="row-title">${escapeHtml(device.device)}</div>
+                <div class="muted">${escapeHtml(sources || "No sources")}</div>
+                <div class="mini-track" style="margin-top:7px"><div class="mini-fill input" style="width:${Math.max(total / max * 100, 1)}%"></div></div>
               </div>
-              <div class="device-total">${shortToken(total)}</div>
+              <div class="row-value">${short(total)}</div>
             </div>
           `;
         }).join("");
-        document.getElementById("deviceSubtitle").textContent = `${ledger.device_count} total`;
+        document.getElementById("deviceSubtitle").textContent = `${devices.length} tracked`;
+      }
+
+      function renderEfficiency(rows) {
+        const total = sumRows(rows);
+        const cache = total.cache_creation_input_tokens + total.cache_read_input_tokens;
+        const nonCachedInput = Math.max(total.input_tokens - total.cache_read_input_tokens, 0);
+        const items = [
+          ["Cache share", cache, total.total_tokens, "cache"],
+          ["Output share", total.output_tokens, total.total_tokens, "output"],
+          ["Reasoning / output", total.reasoning_output_tokens, Math.max(total.output_tokens, 1), "reasoning"],
+          ["Non-cached input", nonCachedInput, Math.max(total.input_tokens, 1), "input"]
+        ];
+        document.getElementById("efficiency").innerHTML = items.map(([label, value, denominator, cls]) => `
+          <div class="metric-row">
+            <div class="split-row">
+              <div class="row-title">${label}</div>
+              <div class="row-value">${pct(value, denominator)}</div>
+            </div>
+            <div class="mini-track"><div class="mini-fill ${cls}" style="width:${Math.max(Math.min(value / denominator, 1) * 100, value > 0 ? 1 : 0)}%"></div></div>
+          </div>
+        `).join("");
+        document.getElementById("efficiencySubtitle").textContent = `${short(total.total_tokens)} total`;
       }
 
       function renderTable(rows) {
-        const body = document.getElementById("rows");
-        body.innerHTML = rows.slice().reverse().map((row) => `
+        document.getElementById("rows").innerHTML = rows.slice().reverse().map((row) => `
           <tr>
             <td>${row.date}</td>
-            <td><span class="tool-pill ${row.tool}">${row.tool}</span></td>
-            <td>${token(row.input_tokens)}</td>
-            <td>${token(row.cache_creation_input_tokens)}</td>
-            <td>${token(row.cache_read_input_tokens)}</td>
-            <td>${token(row.output_tokens)}</td>
-            <td>${token(row.reasoning_output_tokens)}</td>
-            <td>${token(row.total_tokens)}</td>
+            <td><span class="pill ${row.tool}">${row.tool}</span></td>
+            <td>${full(row.input_tokens)}</td>
+            <td>${full(row.cache_creation_input_tokens)}</td>
+            <td>${full(row.cache_read_input_tokens)}</td>
+            <td>${full(row.output_tokens)}</td>
+            <td>${full(row.reasoning_output_tokens)}</td>
+            <td>${full(row.events)}</td>
+            <td>${full(row.total_tokens)}</td>
           </tr>
         `).join("");
         document.getElementById("rowSubtitle").textContent = `${rows.length} rows`;
       }
 
       function render() {
-        const rows = rowsForTool();
+        const rows = filteredDaily();
+        const hourly = filteredHourly();
+        const bounds = activeBounds();
         renderKpis(rows);
-        renderChart(rows);
+        renderTimeline(rows);
+        renderSplit(rows);
+        renderMetricMix(rows);
+        renderHeatmap(hourly);
+        renderModels();
+        renderTopDays(rows);
         renderDevices();
+        renderEfficiency(rows);
         renderTable(rows);
 
         const generated = ledger.generated_at ? new Date(ledger.generated_at) : null;
-        document.getElementById("updated").textContent = generated
-          ? `Updated ${generated.toLocaleString()}`
-          : "Updated unknown";
-        document.getElementById("deviceCount").textContent = `${ledger.device_count || 0} devices`;
+        document.getElementById("updated").textContent = generated ? `Updated ${generated.toLocaleString()}` : "Updated unknown";
+        document.getElementById("deviceCount").textContent = `${ledger.device_count || 0} devices / ${full(ledger.combined?.events || 0)} events`;
+        document.getElementById("rangeText").textContent = `${bounds.first || "-"} to ${bounds.last || "-"} / ${activeTool} / ${metrics[activeMetric]}`;
       }
 
-      document.getElementById("toolFilter").addEventListener("click", (event) => {
-        const button = event.target.closest("button[data-tool]");
-        if (!button) return;
-        activeTool = button.dataset.tool;
-        for (const item of document.querySelectorAll("#toolFilter button")) {
-          item.setAttribute("aria-pressed", String(item === button));
-        }
-        render();
-      });
+      function bindSegment(id, attr, setter) {
+        document.getElementById(id).addEventListener("click", (event) => {
+          const button = event.target.closest(`button[${attr}]`);
+          if (!button) return;
+          setter(button.getAttribute(attr));
+          for (const item of document.querySelectorAll(`#${id} button`)) {
+            item.setAttribute("aria-pressed", String(item === button));
+          }
+          render();
+        });
+      }
 
+      bindSegment("toolFilter", "data-tool", (value) => { activeTool = value; });
+      bindSegment("rangeFilter", "data-range", (value) => { activeRange = value; });
       document.getElementById("metricSelect").addEventListener("change", (event) => {
         activeMetric = event.target.value;
         render();
@@ -626,11 +1114,7 @@
           render();
         })
         .catch((error) => {
-          document.querySelector(".shell").innerHTML = `
-            <div class="panel error">
-              Dashboard data could not be loaded: ${error.message}
-            </div>
-          `;
+          document.querySelector(".shell").innerHTML = `<section class="panel error"><div class="panel-body">Dashboard data could not be loaded: ${escapeHtml(error.message)}</div></section>`;
         });
     </script>
   </body>
