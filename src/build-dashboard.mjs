@@ -48,6 +48,8 @@ async function readDeviceFiles(dataDir) {
       generated_at: parsed.generated_at || null,
       sources: parsed.sources || [],
       daily: parsed.daily || [],
+      hourly: parsed.hourly || [],
+      models: parsed.models || [],
       totals: parsed.totals || [],
     });
   }
@@ -56,6 +58,8 @@ async function readDeviceFiles(dataDir) {
 
 function buildLedger(devices) {
   const daily = new Map();
+  const hourly = new Map();
+  const models = new Map();
   const deviceSets = new Map();
 
   for (const device of devices) {
@@ -79,6 +83,38 @@ function buildLedger(devices) {
       if (!deviceSets.has(key)) deviceSets.set(key, new Set());
       deviceSets.get(key).add(device.device);
     }
+
+    for (const row of device.hourly) {
+      const key = `${row.date}\t${row.hour}\t${row.tool}`;
+      if (!hourly.has(key)) {
+        hourly.set(key, {
+          date: row.date,
+          weekday: row.weekday,
+          hour: row.hour,
+          tool: row.tool,
+          ...zeroUsage(),
+          events: 0,
+        });
+      }
+      const target = hourly.get(key);
+      addUsage(target, row);
+      target.events += Number(row.events) || 0;
+    }
+
+    for (const row of device.models) {
+      const key = `${row.tool}\t${row.model || "unknown"}`;
+      if (!models.has(key)) {
+        models.set(key, {
+          tool: row.tool,
+          model: row.model || "unknown",
+          ...zeroUsage(),
+          events: 0,
+        });
+      }
+      const target = models.get(key);
+      addUsage(target, row);
+      target.events += Number(row.events) || 0;
+    }
   }
 
   for (const [key, set] of deviceSets.entries()) {
@@ -88,6 +124,14 @@ function buildLedger(devices) {
   const dailyRows = Array.from(daily.values()).sort((a, b) => {
     const byDate = a.date.localeCompare(b.date);
     return byDate || a.tool.localeCompare(b.tool);
+  });
+  const hourlyRows = Array.from(hourly.values()).sort((a, b) => {
+    const byDate = a.date.localeCompare(b.date);
+    if (byDate) return byDate;
+    return a.hour - b.hour || a.tool.localeCompare(b.tool);
+  });
+  const modelRows = Array.from(models.values()).sort((a, b) => {
+    return b.total_tokens - a.total_tokens || a.tool.localeCompare(b.tool) || a.model.localeCompare(b.model);
   });
 
   const totalsByTool = new Map();
@@ -119,6 +163,8 @@ function buildLedger(devices) {
     combined.sessions += Number(total.sessions) || 0;
   }
 
+  const dates = Array.from(new Set(dailyRows.map((row) => row.date))).sort();
+
   return {
     schema_version: 1,
     generated_at: new Date().toISOString(),
@@ -126,10 +172,21 @@ function buildLedger(devices) {
     devices: devices.map((device) => ({
       device: device.device,
       generated_at: device.generated_at,
-      sources: device.sources,
+      sources: device.sources.map((source) => ({
+        tool: source.tool,
+        files_scanned: source.files_scanned,
+        sessions_with_usage: source.sessions_with_usage,
+      })),
       totals: device.totals,
     })),
+    date_range: {
+      start: dates[0] || null,
+      end: dates[dates.length - 1] || null,
+      active_days: dates.length,
+    },
     daily: dailyRows,
+    hourly: hourlyRows,
+    models: modelRows,
     totals,
     combined,
   };
