@@ -1,0 +1,14 @@
+{
+  "name": "ai-usage-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ai-usage-ledger": "./src/ai-usage-ledger.mjs"
+  },
+  "scripts": {
+    "collect": "node ./src/ai-usage-ledger.mjs collect",
+    "report": "node ./src/ai-usage-ledger.mjs report",
+    "doctor": "node ./src/ai-usage-ledger.mjs doctor"
+  }
+}
