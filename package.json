@@ -8,6 +8,7 @@
   },
   "scripts": {
     "collect": "node ./src/ai-usage-ledger.mjs collect",
+    "dashboard": "node ./src/build-dashboard.mjs",
     "report": "node ./src/ai-usage-ledger.mjs report",
     "doctor": "node ./src/ai-usage-ledger.mjs doctor"
   }
