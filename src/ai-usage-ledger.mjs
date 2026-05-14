@@ -19,7 +19,7 @@ const DEFAULT_TIMEZONE = process.env.TZ || "America/New_York";
 function usage() {
   console.log(`usage:
   ai-usage-ledger doctor
-  ai-usage-ledger collect [--device NAME] [--codex PATH] [--claude PATH] [--out data/devices]
+  ai-usage-ledger collect [--device NAME] [--codex PATH] [--claude PATH] [--out data/devices] [--sessions]
   ai-usage-ledger report [--data data/devices]
 
 examples:
@@ -384,6 +384,7 @@ async function collectClaude(root, timezone) {
 async function collectCommand(options) {
   const device = options.device || os.hostname();
   const timezone = options.timezone || DEFAULT_TIMEZONE;
+  const includeSessions = Boolean(options.sessions);
   const outDir = path.resolve(options.out || "data/devices");
   const codexRoot = options.codex === false ? null : path.resolve(String(options.codex || path.join(os.homedir(), ".codex", "sessions")));
   const claudeRoot = options.claude === false ? null : path.resolve(String(options.claude || path.join(os.homedir(), ".claude", "projects")));
@@ -417,11 +418,13 @@ async function collectCommand(options) {
     sources,
     daily,
     totals,
-    sessions: sessions.sort((a, b) => {
-      const left = `${a.tool}:${a.first_activity || ""}:${a.session_hash}`;
-      const right = `${b.tool}:${b.first_activity || ""}:${b.session_hash}`;
-      return left.localeCompare(right);
-    }),
+    sessions: includeSessions
+      ? sessions.sort((a, b) => {
+          const left = `${a.tool}:${a.first_activity || ""}:${a.session_hash}`;
+          const right = `${b.tool}:${b.first_activity || ""}:${b.session_hash}`;
+          return left.localeCompare(right);
+        })
+      : [],
   };
 
   await fs.promises.mkdir(outDir, { recursive: true });
