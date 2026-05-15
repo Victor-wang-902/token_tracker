@@ -7,7 +7,7 @@
     "ai-usage-ledger": "./src/ai-usage-ledger.mjs"
   },
   "scripts": {
-    "collect": "node ./src/ai-usage-ledger.mjs collect",
+    "collect": "node ./src/ai-usage-ledger.mjs collect --sessions",
     "dashboard": "node ./src/build-dashboard.mjs",
     "report": "node ./src/ai-usage-ledger.mjs report",
     "doctor": "node ./src/ai-usage-ledger.mjs doctor"

@@ -323,6 +323,8 @@
       .metric-mix,
       .model-list,
       .top-list,
+      .start-day-list,
+      .session-list,
       .device-list {
         display: grid;
         gap: 10px;
@@ -332,6 +334,8 @@
       .metric-row,
       .model-row,
       .top-row,
+      .start-day-row,
+      .session-row,
       .device-row {
         display: grid;
         gap: 8px;
@@ -660,6 +664,26 @@
 
         <section class="panel">
           <div class="panel-head">
+            <div class="panel-title">Session-Start Days</div>
+            <div class="panel-subtitle" id="startDaySubtitle"></div>
+          </div>
+          <div class="panel-body">
+            <div class="start-day-list" id="startDays"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Top Sessions</div>
+            <div class="panel-subtitle" id="sessionSubtitle"></div>
+          </div>
+          <div class="panel-body">
+            <div class="session-list" id="sessions"></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
             <div class="panel-title">Devices</div>
             <div class="panel-subtitle" id="deviceSubtitle"></div>
           </div>
@@ -699,6 +723,32 @@
                 </tr>
               </thead>
               <tbody id="rows"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel span-2">
+          <div class="panel-head">
+            <div class="panel-title">Session Files</div>
+            <div class="panel-subtitle" id="sessionRowSubtitle"></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Session</th>
+                  <th>Tool</th>
+                  <th>Dates</th>
+                  <th>Model</th>
+                  <th>File Size</th>
+                  <th>Events</th>
+                  <th>Input</th>
+                  <th>Cache Read</th>
+                  <th>Output</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody id="sessionRows"></tbody>
             </table>
           </div>
         </section>
@@ -756,6 +806,14 @@
 
       function short(value) {
         return compact.format(num(value));
+      }
+
+      function bytes(value) {
+        const size = num(value);
+        if (size >= 1024 ** 3) return `${(size / 1024 ** 3).toFixed(2)} GB`;
+        if (size >= 1024 ** 2) return `${(size / 1024 ** 2).toFixed(1)} MB`;
+        if (size >= 1024) return `${(size / 1024).toFixed(1)} KB`;
+        return `${full(size)} B`;
       }
 
       function pct(value, total) {
@@ -817,6 +875,23 @@
         return (ledger.models || []).filter((row) => inTool(row));
       }
 
+      function sessionValue(row, metric = activeMetric) {
+        if (metric === "events") return num(row.events);
+        return num(row.total?.[metric]);
+      }
+
+      function sessionOverlapsRange(row) {
+        const bounds = activeBounds();
+        const first = row.first_day || (row.first_activity || "").slice(0, 10);
+        const last = row.last_day || (row.last_activity || "").slice(0, 10) || first;
+        if (!first) return true;
+        return (!bounds.first || last >= bounds.first) && (!bounds.last || first <= bounds.last);
+      }
+
+      function filteredSessions() {
+        return (ledger.sessions || []).filter((row) => inTool(row) && sessionOverlapsRange(row));
+      }
+
       function sumRows(rows) {
         const total = {
           input_tokens: 0,
@@ -857,7 +932,7 @@
         return out;
       }
 
-      function renderKpis(rows) {
+      function renderKpis(rows, sessions) {
         const total = sumRows(rows);
         const byDate = Array.from(groupDailyByDate(rows).values()).sort((a, b) => b.all - a.all);
         const peak = byDate[0] || { date: "-", all: 0 };
@@ -866,13 +941,14 @@
         const cacheShare = total.total_tokens > 0 ? cacheAll / total.total_tokens : 0;
         const outputShare = total.total_tokens > 0 ? total.output_tokens / total.total_tokens : 0;
         const selected = total[activeMetric];
+        const largestSession = sessions.slice().sort((a, b) => num(b.total?.total_tokens) - num(a.total?.total_tokens))[0];
         const items = [
           ["Selected", short(selected), `${metrics[activeMetric]} in filter`],
           ["Total", short(total.total_tokens), `${full(total.total_tokens)} tokens`],
           ["Output", short(total.output_tokens), pct(outputShare, 1)],
           ["Cache", short(cacheAll), pct(cacheShare, 1)],
-          ["Reasoning", short(total.reasoning_output_tokens), `${full(total.reasoning_output_tokens)} tokens`],
-          ["Sessions", full(total.sessions), `${full(total.events)} events`],
+          ["Largest Session", short(largestSession?.total?.total_tokens || 0), largestSession ? `${largestSession.first_day || "-"} / ${bytes(largestSession.file_size_bytes)}` : "-"],
+          ["Session Files", full(sessions.length), `${full(total.events)} events`],
           ["Peak Day", short(peak.all), peak.date],
           ["Active Days", full(activeDays), `${dateSpan().length} calendar days`]
         ];
@@ -1005,17 +1081,78 @@
         document.getElementById("topSubtitle").textContent = metrics[activeMetric];
       }
 
+      function renderStartDays(rows) {
+        const grouped = new Map();
+        for (const row of rows) {
+          const date = row.first_day || (row.first_activity || "").slice(0, 10) || "unknown";
+          const value = sessionValue(row);
+          if (!grouped.has(date)) grouped.set(date, { date, codex: 0, claude: 0, all: 0, files: 0 });
+          const target = grouped.get(date);
+          target[row.tool] += value;
+          target.all += value;
+          target.files += 1;
+        }
+        const top = Array.from(grouped.values())
+          .filter((row) => row.all > 0)
+          .sort((a, b) => b.all - a.all)
+          .slice(0, 8);
+        const max = Math.max(...top.map((row) => row.all), 1);
+        document.getElementById("startDays").innerHTML = top.map((row) => {
+          const primaryTool = row.codex >= row.claude ? "codex" : "claude";
+          return `
+            <div class="start-day-row">
+              <div class="split-row">
+                <div>
+                  <div class="row-title">${escapeHtml(row.date)}</div>
+                  <div class="muted">${full(row.files)} session files / Codex ${short(row.codex)} / Claude ${short(row.claude)}</div>
+                </div>
+                <div class="row-value">${short(row.all)}</div>
+              </div>
+              <div class="mini-track"><div class="mini-fill ${primaryTool}" style="width:${Math.max(row.all / max * 100, 1)}%"></div></div>
+            </div>
+          `;
+        }).join("") || `<div class="muted">No session-start days</div>`;
+        document.getElementById("startDaySubtitle").textContent = `${metrics[activeMetric]} by first activity`;
+      }
+
+      function renderTopSessions(rows) {
+        const top = rows.slice()
+          .filter((row) => sessionValue(row) > 0)
+          .sort((a, b) => sessionValue(b) - sessionValue(a))
+          .slice(0, 8);
+        const max = Math.max(...top.map((row) => sessionValue(row)), 1);
+        document.getElementById("sessions").innerHTML = top.map((row) => {
+          const value = sessionValue(row);
+          const dateText = row.first_day === row.last_day ? row.first_day : `${row.first_day || "-"} to ${row.last_day || "-"}`;
+          return `
+            <div class="session-row">
+              <div class="split-row">
+                <div>
+                  <div class="row-title">${escapeHtml(row.session_hash.slice(0, 10))}</div>
+                  <div class="muted">${escapeHtml(dateText)} / ${escapeHtml(row.model || "unknown")} / ${bytes(row.file_size_bytes)}</div>
+                </div>
+                <div class="row-value">${short(value)}</div>
+              </div>
+              <div class="mini-track"><div class="mini-fill ${row.tool}" style="width:${Math.max(value / max * 100, 1)}%"></div></div>
+            </div>
+          `;
+        }).join("") || `<div class="muted">No session files</div>`;
+        document.getElementById("sessionSubtitle").textContent = `${rows.length} files / ${metrics[activeMetric]}`;
+      }
+
       function renderDevices() {
         const devices = ledger.devices || [];
         const max = Math.max(...devices.map((device) => device.totals.reduce((sum, row) => sum + num(row.total_tokens), 0)), 1);
         document.getElementById("devices").innerHTML = devices.map((device) => {
           const total = device.totals.reduce((sum, row) => sum + num(row.total_tokens), 0);
           const sources = device.sources.map((source) => `${source.tool}: ${source.sessions_with_usage}`).join(" / ");
+          const accounting = device.accounting?.codex && device.accounting?.claude ? "current accounting" : "legacy accounting; rerun collector";
           return `
             <div class="device-row">
               <div>
                 <div class="row-title">${escapeHtml(device.device)}</div>
                 <div class="muted">${escapeHtml(sources || "No sources")}</div>
+                <div class="muted">${escapeHtml(accounting)}</div>
                 <div class="mini-track" style="margin-top:7px"><div class="mini-fill input" style="width:${Math.max(total / max * 100, 1)}%"></div></div>
               </div>
               <div class="row-value">${short(total)}</div>
@@ -1064,20 +1201,46 @@
         document.getElementById("rowSubtitle").textContent = `${rows.length} rows`;
       }
 
+      function renderSessionTable(rows) {
+        const sorted = rows.slice().sort((a, b) => num(b.total?.total_tokens) - num(a.total?.total_tokens));
+        document.getElementById("sessionRows").innerHTML = sorted.map((row) => {
+          const dateText = row.first_day === row.last_day ? row.first_day : `${row.first_day || "-"} to ${row.last_day || "-"}`;
+          return `
+            <tr>
+              <td>${escapeHtml(row.session_hash.slice(0, 12))}</td>
+              <td><span class="pill ${row.tool}">${row.tool}</span></td>
+              <td>${escapeHtml(dateText)}</td>
+              <td>${escapeHtml(row.model || "unknown")}</td>
+              <td>${bytes(row.file_size_bytes)}</td>
+              <td>${full(row.events)}</td>
+              <td>${full(row.total?.input_tokens)}</td>
+              <td>${full(row.total?.cache_read_input_tokens)}</td>
+              <td>${full(row.total?.output_tokens)}</td>
+              <td>${full(row.total?.total_tokens)}</td>
+            </tr>
+          `;
+        }).join("");
+        document.getElementById("sessionRowSubtitle").textContent = `${rows.length} streamed files`;
+      }
+
       function render() {
         const rows = filteredDaily();
         const hourly = filteredHourly();
+        const sessions = filteredSessions();
         const bounds = activeBounds();
-        renderKpis(rows);
+        renderKpis(rows, sessions);
         renderTimeline(rows);
         renderSplit(rows);
         renderMetricMix(rows);
         renderHeatmap(hourly);
         renderModels();
         renderTopDays(rows);
+        renderStartDays(sessions);
+        renderTopSessions(sessions);
         renderDevices();
         renderEfficiency(rows);
         renderTable(rows);
+        renderSessionTable(sessions);
 
         const generated = ledger.generated_at ? new Date(ledger.generated_at) : null;
         document.getElementById("updated").textContent = generated ? `Updated ${generated.toLocaleString()}` : "Updated unknown";

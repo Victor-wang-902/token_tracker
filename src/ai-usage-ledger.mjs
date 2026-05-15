@@ -15,6 +15,10 @@ const USAGE_KEYS = [
 ];
 
 const DEFAULT_TIMEZONE = process.env.TZ || "America/New_York";
+const ACCOUNTING = {
+  codex: "ccusage-codex-compatible-streaming-v1",
+  claude: "claude-code-global-event-dedupe-v1",
+};
 
 function usage() {
   console.log(`usage:
@@ -68,6 +72,10 @@ function zeroUsage() {
   };
 }
 
+function componentTotal(source) {
+  return USAGE_KEYS.reduce((sum, key) => sum + (Number(source?.[key]) || 0), 0);
+}
+
 function addUsage(target, source) {
   for (const key of USAGE_KEYS) {
     target[key] += Number(source?.[key]) || 0;
@@ -90,8 +98,6 @@ function normalizeCodexUsage(raw) {
   const cacheRead = Number(raw.cached_input_tokens ?? raw.cache_read_input_tokens) || 0;
   const output = Number(raw.output_tokens) || 0;
   const reasoning = Number(raw.reasoning_output_tokens) || 0;
-  // Match @ccusage/codex: cached input and reasoning are tracked buckets, but
-  // Codex total_tokens is used as reported; legacy totals fall back to input+output.
   const total = Number(raw.total_tokens) || input + output;
   return {
     input_tokens: input,
@@ -100,6 +106,44 @@ function normalizeCodexUsage(raw) {
     output_tokens: output,
     reasoning_output_tokens: reasoning,
     total_tokens: total,
+  };
+}
+
+function normalizeCodexRawUsage(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const input = Number(raw.input_tokens) || 0;
+  const cacheRead = Number(raw.cached_input_tokens ?? raw.cache_read_input_tokens) || 0;
+  const output = Number(raw.output_tokens) || 0;
+  const reasoning = Number(raw.reasoning_output_tokens) || 0;
+  const total = Number(raw.total_tokens) || input + output;
+  return {
+    input_tokens: input,
+    cached_input_tokens: cacheRead,
+    output_tokens: output,
+    reasoning_output_tokens: reasoning,
+    total_tokens: total,
+  };
+}
+
+function subtractCodexRawUsage(current, previous) {
+  return {
+    input_tokens: Math.max(current.input_tokens - (previous?.input_tokens || 0), 0),
+    cached_input_tokens: Math.max(current.cached_input_tokens - (previous?.cached_input_tokens || 0), 0),
+    output_tokens: Math.max(current.output_tokens - (previous?.output_tokens || 0), 0),
+    reasoning_output_tokens: Math.max(current.reasoning_output_tokens - (previous?.reasoning_output_tokens || 0), 0),
+    total_tokens: Math.max(current.total_tokens - (previous?.total_tokens || 0), 0),
+  };
+}
+
+function convertCodexRawUsage(raw) {
+  const cacheRead = Math.min(raw.cached_input_tokens || 0, raw.input_tokens || 0);
+  return {
+    input_tokens: Math.max((raw.input_tokens || 0) - cacheRead, 0),
+    cache_creation_input_tokens: 0,
+    cache_read_input_tokens: cacheRead,
+    output_tokens: raw.output_tokens || 0,
+    reasoning_output_tokens: Math.max(0, Math.min(raw.reasoning_output_tokens || 0, raw.output_tokens || 0)),
+    total_tokens: raw.total_tokens || (raw.input_tokens || 0) + (raw.output_tokens || 0),
   };
 }
 
@@ -325,36 +369,49 @@ async function collectCodex(root, timezone) {
   for await (const file of walkJsonl(root)) {
     filesScanned += 1;
     const relative = path.relative(root, file).split(path.sep).join("/");
+    const stat = await fs.promises.stat(file);
     const sessionDaily = new Map();
     const sessionTotal = zeroUsage();
     const models = new Set();
     let previousTotal = null;
+    let currentModel = null;
     let firstActivity = null;
     let lastActivity = null;
     let events = 0;
 
     await readJsonlLines(file, async (line) => {
-      if (!line.includes('"type":"token_count"')) return;
+      if (!line.includes('"token_count"') && !line.includes('"turn_context"')) return;
       let entry;
       try {
         entry = JSON.parse(line);
       } catch {
         return;
       }
+      if (entry.type === "turn_context") {
+        const model = entry?.payload?.model || entry?.payload?.info?.model || entry?.payload?.info?.model_name;
+        if (model) currentModel = String(model);
+        return;
+      }
+      if (entry.type !== "event_msg" || entry?.payload?.type !== "token_count") return;
       const timestamp = entry.timestamp;
-      const total = normalizeCodexUsage(entry?.payload?.info?.total_token_usage);
-      if (!timestamp || !total) return;
+      const info = entry?.payload?.info || {};
+      const lastUsage = normalizeCodexRawUsage(info.last_token_usage);
+      const totalUsage = normalizeCodexRawUsage(info.total_token_usage);
+      let rawDelta = lastUsage;
+      if (!rawDelta && totalUsage) rawDelta = subtractCodexRawUsage(totalUsage, previousTotal);
+      if (totalUsage) previousTotal = totalUsage;
+      if (!timestamp || !rawDelta) return;
+      const delta = convertCodexRawUsage(rawDelta);
 
       const model =
-        entry?.payload?.info?.model ||
-        entry?.payload?.info?.last_token_usage?.model ||
-        entry?.payload?.info?.total_token_usage?.model ||
-        "unknown";
+        info.model ||
+        info.model_name ||
+        info.metadata?.model ||
+        entry?.payload?.model ||
+        currentModel ||
+        "gpt-5";
       if (model) models.add(String(model));
 
-      const delta = subtractUsage(total, previousTotal);
-      previousTotal = total;
-      delta.cache_read_input_tokens = Math.min(delta.cache_read_input_tokens, delta.input_tokens);
       if ((delta.total_tokens || 0) === 0) return;
 
       const date = dayKey(timestamp, formatter);
@@ -380,7 +437,10 @@ async function collectCodex(root, timezone) {
       model: models.size === 0 ? "unknown" : models.size === 1 ? Array.from(models)[0] : "mixed",
       first_activity: firstActivity,
       last_activity: lastActivity,
+      file_size_bytes: stat.size,
       events,
+      active_days: sessionDaily.size,
+      component_total_tokens: componentTotal(sessionTotal),
       total: sessionTotal,
       days: sortedDailyRows(sessionDaily).map(({ devices, ...row }) => row),
     });
@@ -406,15 +466,16 @@ async function collectClaude(root, timezone) {
   const hourly = new Map();
   const modelTotals = new Map();
   const sessions = [];
+  const seenEvents = new Set();
   let filesScanned = 0;
 
   for await (const file of walkJsonl(root)) {
     filesScanned += 1;
     const relative = path.relative(root, file).split(path.sep).join("/");
+    const stat = await fs.promises.stat(file);
     const sessionDaily = new Map();
     const sessionTotal = zeroUsage();
     const models = new Set();
-    const seen = new Set();
     let firstActivity = null;
     let lastActivity = null;
     let events = 0;
@@ -434,9 +495,12 @@ async function collectClaude(root, timezone) {
       const date = dayKey(timestamp, formatter);
       if (!date) return;
 
-      const eventId = entry.uuid || entry.requestId || `${relative}:${events}`;
-      if (seen.has(eventId)) return;
-      seen.add(eventId);
+      const eventId = entry.uuid || entry.requestId;
+      if (eventId) {
+        const dedupeKey = `claude:${eventId}`;
+        if (seenEvents.has(dedupeKey)) return;
+        seenEvents.add(dedupeKey);
+      }
 
       const model = entry?.message?.model;
       if (model) models.add(String(model));
@@ -462,7 +526,10 @@ async function collectClaude(root, timezone) {
       model: models.size === 0 ? "unknown" : models.size === 1 ? Array.from(models)[0] : "mixed",
       first_activity: firstActivity,
       last_activity: lastActivity,
+      file_size_bytes: stat.size,
       events,
+      active_days: sessionDaily.size,
+      component_total_tokens: componentTotal(sessionTotal),
       total: sessionTotal,
       days: sortedDailyRows(sessionDaily).map(({ devices, ...row }) => row),
     });
@@ -519,6 +586,7 @@ async function collectCommand(options) {
   const totals = buildTotalFromDaily(daily);
   const output = {
     schema_version: 1,
+    accounting: ACCOUNTING,
     generated_at: new Date().toISOString(),
     device,
     timezone,

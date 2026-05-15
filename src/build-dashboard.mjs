@@ -45,12 +45,14 @@ async function readDeviceFiles(dataDir) {
     devices.push({
       file,
       device: parsed.device || entry.name.replace(/\.json$/i, ""),
+      accounting: parsed.accounting || null,
       generated_at: parsed.generated_at || null,
       sources: parsed.sources || [],
       daily: parsed.daily || [],
       hourly: parsed.hourly || [],
       models: parsed.models || [],
       totals: parsed.totals || [],
+      sessions: parsed.sessions || [],
     });
   }
   return devices;
@@ -60,6 +62,7 @@ function buildLedger(devices) {
   const daily = new Map();
   const hourly = new Map();
   const models = new Map();
+  const sessions = [];
   const deviceSets = new Map();
 
   for (const device of devices) {
@@ -114,6 +117,27 @@ function buildLedger(devices) {
       const target = models.get(key);
       addUsage(target, row);
       target.events += Number(row.events) || 0;
+    }
+
+    for (const row of device.sessions) {
+      const days = row.days || [];
+      const firstDay = days[0]?.date || (row.first_activity || "").slice(0, 10) || null;
+      const lastDay = days[days.length - 1]?.date || (row.last_activity || "").slice(0, 10) || firstDay;
+      sessions.push({
+        device: device.device,
+        tool: row.tool,
+        session_hash: row.session_hash,
+        model: row.model || "unknown",
+        first_activity: row.first_activity || null,
+        last_activity: row.last_activity || null,
+        first_day: firstDay,
+        last_day: lastDay,
+        active_days: Number(row.active_days) || days.length || 0,
+        file_size_bytes: Number(row.file_size_bytes) || 0,
+        events: Number(row.events) || 0,
+        component_total_tokens: Number(row.component_total_tokens) || 0,
+        total: row.total || zeroUsage(),
+      });
     }
   }
 
@@ -171,6 +195,7 @@ function buildLedger(devices) {
     device_count: devices.length,
     devices: devices.map((device) => ({
       device: device.device,
+      accounting: device.accounting,
       generated_at: device.generated_at,
       sources: device.sources.map((source) => ({
         tool: source.tool,
@@ -187,6 +212,11 @@ function buildLedger(devices) {
     daily: dailyRows,
     hourly: hourlyRows,
     models: modelRows,
+    sessions: sessions.sort((a, b) => {
+      return (b.total?.total_tokens || 0) - (a.total?.total_tokens || 0)
+        || a.tool.localeCompare(b.tool)
+        || a.session_hash.localeCompare(b.session_hash);
+    }),
     totals,
     combined,
   };
