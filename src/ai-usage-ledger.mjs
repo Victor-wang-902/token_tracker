@@ -90,6 +90,8 @@ function normalizeCodexUsage(raw) {
   const cacheRead = Number(raw.cached_input_tokens ?? raw.cache_read_input_tokens) || 0;
   const output = Number(raw.output_tokens) || 0;
   const reasoning = Number(raw.reasoning_output_tokens) || 0;
+  // Match @ccusage/codex: cached input and reasoning are tracked buckets, but
+  // Codex total_tokens is used as reported; legacy totals fall back to input+output.
   const total = Number(raw.total_tokens) || input + output;
   return {
     input_tokens: input,
@@ -352,6 +354,7 @@ async function collectCodex(root, timezone) {
 
       const delta = subtractUsage(total, previousTotal);
       previousTotal = total;
+      delta.cache_read_input_tokens = Math.min(delta.cache_read_input_tokens, delta.input_tokens);
       if ((delta.total_tokens || 0) === 0) return;
 
       const date = dayKey(timestamp, formatter);
